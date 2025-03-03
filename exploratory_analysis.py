@@ -48,7 +48,7 @@ class FuelDemandAnalyzer:
         logger.info("Analyzing data structure...")
         
         # Print time ranges
-        print(f"Data time range: {self.input_absolute.index.min()} to {self.input_absolute.index.max()}")
+        logger.info(f"Data time range: {self.input_absolute.index.min()} to {self.input_absolute.index.max()}")
         
         # Print column categories
         category_counts = {}
@@ -58,18 +58,18 @@ class FuelDemandAnalyzer:
             else:
                 category_counts[category] = 1
                 
-        print("\nFeatures by category:")
+        logger.info("\nFeatures by category:")
         for category, count in category_counts.items():
-            print(f"  {category}: {count} variables")
+            logger.info(f"  {category}: {count} variables")
             
         # Print information about the demand data
-        print("\nFuel demand data:")
-        print(self.demand_absolute.describe())
+        logger.info("\nFuel demand data:")
+        logger.info(self.demand_absolute.describe())
         
         # Check for missing values
         missing_values = self.input_absolute.isna().sum()
-        print("\nFeatures with missing values:")
-        print(missing_values[missing_values > 0])
+        logger.info("\nFeatures with missing values:")
+        logger.info(missing_values[missing_values > 0])
         
     def plot_demand_trends(self):
         """
@@ -157,15 +157,15 @@ class FuelDemandAnalyzer:
         pct_corr_gasoline = self.input_pct.corrwith(self.demand_pct['Gasoline']).sort_values(ascending=False)
         
         # Print top correlations
-        print("\nTop 10 features correlated with Diesel demand (absolute values):")
-        print(abs_corr_diesel.head(10))
-        print("\nTop 10 features correlated with Gasoline demand (absolute values):")
-        print(abs_corr_gasoline.head(10))
+        logger.info("\nTop 10 features correlated with Diesel demand (absolute values):")
+        logger.info(abs_corr_diesel.head(10))
+        logger.info("\nTop 10 features correlated with Gasoline demand (absolute values):")
+        logger.info(abs_corr_gasoline.head(10))
         
-        print("\nTop 10 features correlated with Diesel demand changes:")
-        print(pct_corr_diesel.head(10))
-        print("\nTop 10 features correlated with Gasoline demand changes:")
-        print(pct_corr_gasoline.head(10))
+        logger.info("\nTop 10 features correlated with Diesel demand changes:")
+        logger.info(pct_corr_diesel.head(10))
+        logger.info("\nTop 10 features correlated with Gasoline demand changes:")
+        logger.info(pct_corr_gasoline.head(10))
         
         # Save correlations to CSV for reference
         abs_corr_diesel.to_csv('charts/diesel_absolute_correlations.csv')
