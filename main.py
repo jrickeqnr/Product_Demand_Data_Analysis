@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Fuel Demand Analysis and Forecasting - Main Script
 
