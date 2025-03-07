@@ -5,24 +5,52 @@ import pickle
 import logging
 import time
 import numpy as np
+import argparse
+from datetime import datetime
+from config_loader import load_config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("data_fetching.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Create data directory if it doesn't exist
-os.makedirs('data', exist_ok=True)
+def setup_logging(config):
+    """Set up logging based on configuration"""
+    log_level = getattr(logging, config['logging']['level'])
+    handlers = []
+    
+    if config['logging']['file_logging']:
+        handlers.append(logging.FileHandler("data_fetching.log"))
+    
+    if config['logging']['console_logging']:
+        handlers.append(logging.StreamHandler())
+    
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers
+    )
+    
+    return logging.getLogger(__name__)
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Fetch and process fuel demand data')
+    parser.add_argument('--config', default='config.json', help='Path to configuration file')
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    # Set up logging
+    global logger
+    logger = setup_logging(config)
+    
+    # Create data directory if it doesn't exist
+    data_dir = config['paths']['data_dir']
+    os.makedirs(data_dir, exist_ok=True)
+    
+    start_date = config['data']['date_range']['start_date']
+    end_date = config['data']['date_range']['end_date']
+    
     try:
         logger.info("Starting data fetching process...")
+        logger.info(f"Date range: {start_date} to {end_date or 'present'}")
         
         # Initialize connector
         connector = SynapseConnector()
@@ -37,8 +65,19 @@ def main():
             logger.error("Failed to retrieve Bloomberg data. Exiting process.")
             return
         
+        # Apply date filtering if configured
+        if start_date or end_date:
+            logger.info(f"Filtering data by date range: {start_date} to {end_date or 'present'}")
+            bloomberg_raw_data['Date'] = pd.to_datetime(bloomberg_raw_data['Date'])
+            
+            if start_date:
+                bloomberg_raw_data = bloomberg_raw_data[bloomberg_raw_data['Date'] >= start_date]
+                
+            if end_date:
+                bloomberg_raw_data = bloomberg_raw_data[bloomberg_raw_data['Date'] <= end_date]
+        
         # Save raw Bloomberg data first
-        bloomberg_raw_data.to_csv('data/bloomberg_raw_data.csv', index=False)
+        bloomberg_raw_data.to_csv(os.path.join(data_dir, 'bloomberg_raw_data.csv'), index=False)
         logger.info(f"Saved raw Bloomberg data with {len(bloomberg_raw_data)} rows")
         
         # Aggregate Bloomberg data to monthly frequency with retry logic
@@ -68,7 +107,7 @@ def main():
             return
         
         # Save Bloomberg monthly data
-        bloomberg_monthly_data.to_csv('data/bloomberg_monthly_data.csv', index=False)
+        bloomberg_monthly_data.to_csv(os.path.join(data_dir, 'bloomberg_monthly_data.csv'), index=False)
         logger.info(f"Saved Bloomberg monthly data with {len(bloomberg_monthly_data)} rows")
         
         # Fetch EIA fuel demand data with retry logic
@@ -134,8 +173,18 @@ def main():
                 logger.error(f"Direct query attempt failed: {str(e)}")
                 fuel_demand_data = pd.DataFrame(columns=['date', 'Diesel', 'Gasoline'])
         
+        # Apply date filtering if configured
+        if start_date or end_date:
+            fuel_demand_data['date'] = pd.to_datetime(fuel_demand_data['date'])
+            
+            if start_date:
+                fuel_demand_data = fuel_demand_data[fuel_demand_data['date'] >= start_date]
+                
+            if end_date:
+                fuel_demand_data = fuel_demand_data[fuel_demand_data['date'] <= end_date]
+        
         # Save fuel demand data
-        fuel_demand_data.to_csv('data/fuel_demand_data.csv', index=False)
+        fuel_demand_data.to_csv(os.path.join(data_dir, 'fuel_demand_data.csv'), index=False)
         logger.info(f"Saved fuel demand data with {len(fuel_demand_data)} rows")
         
         # Preprocess and combine data
@@ -145,13 +194,13 @@ def main():
                 bloomberg_monthly_data, fuel_demand_data)
             
             # Save processed data
-            input_pivot.to_csv('data/input_features_absolute.csv')
-            input_pivot_pct.to_csv('data/input_features_percent_change.csv')
-            demand_absolute.to_csv('data/demand_absolute.csv')
-            demand_pct.to_csv('data/demand_percent_change.csv')
+            input_pivot.to_csv(os.path.join(data_dir, 'input_features_absolute.csv'))
+            input_pivot_pct.to_csv(os.path.join(data_dir, 'input_features_percent_change.csv'))
+            demand_absolute.to_csv(os.path.join(data_dir, 'demand_absolute.csv'))
+            demand_pct.to_csv(os.path.join(data_dir, 'demand_percent_change.csv'))
             
             # Save category map for later reference
-            with open('data/category_map.pkl', 'wb') as f:
+            with open(os.path.join(data_dir, 'category_map.pkl'), 'wb') as f:
                 pickle.dump(category_map, f)
                 
             logger.info("Data processing completed successfully.")

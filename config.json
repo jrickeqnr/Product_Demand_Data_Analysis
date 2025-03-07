@@ -1,0 +1,72 @@
+{
+    "data": {
+      "date_range": {
+        "start_date": "2015-01-01",
+        "end_date": null
+      },
+      "data_frequency": "monthly",
+      "fill_missing_strategy": "median"
+    },
+    "analysis": {
+      "models_to_run": ["absolute", "percent_change"],
+      "feature_selection": {
+        "enabled": false,
+        "method": "correlation",
+        "top_features": 20
+      },
+      "lag_features": {
+        "enabled": true,
+        "max_lag": 3
+      },
+      "seasonality": {
+        "enabled": true,
+        "add_month_dummies": true,
+        "add_quarter_dummies": true
+      },
+      "pca": {
+        "enabled": true,
+        "variance_threshold": 0.9
+      }
+    },
+    "modeling": {
+      "train_test_split": {
+        "test_size": 12
+      },
+      "models": {
+        "linear_regression": true,
+        "elasticnet": true,
+        "random_forest": true,
+        "gradient_boosting": true,
+        "xgboost": true
+      },
+      "hyperparameter_optimization": {
+        "enabled": true,
+        "cv_folds": 5,
+        "models_to_optimize": ["elasticnet", "randomforest", "gbm", "xgboost"]
+      },
+      "ensemble": {
+        "enabled": true,
+        "models_to_include": ["elasticnet", "randomforest", "gbm", "xgboost"]
+      }
+    },
+    "targets": {
+      "diesel": true,
+      "gasoline": true
+    },
+    "visualization": {
+      "charts_to_generate": ["trends", "seasonality", "correlations", "feature_importance", "predictions", "pca"],
+      "save_formats": ["png"],
+      "dpi": 300
+    },
+    "logging": {
+      "level": "INFO",
+      "file_logging": true,
+      "console_logging": true
+    },
+    "paths": {
+      "data_dir": "data",
+      "charts_dir": "charts",
+      "models_dir": "models",
+      "evaluation_dir": "evaluation"
+    }
+  }

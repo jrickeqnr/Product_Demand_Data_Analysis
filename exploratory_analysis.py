@@ -10,24 +10,37 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 import logging
+import argparse
+from config_loader import load_config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("eda.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Create output directory for charts and visualizations
-os.makedirs('charts', exist_ok=True)
+def setup_logging(config):
+    """Set up logging based on configuration"""
+    log_level = getattr(logging, config['logging']['level'])
+    handlers = []
+    
+    if config['logging']['file_logging']:
+        handlers.append(logging.FileHandler("eda.log"))
+    
+    if config['logging']['console_logging']:
+        handlers.append(logging.StreamHandler())
+    
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers
+    )
+    
+    return logging.getLogger(__name__)
 
 class FuelDemandAnalyzer:
-    def __init__(self, data_dir='data'):
-        self.data_dir = data_dir
+    def __init__(self, config):
+        self.config = config
+        data_dir = config['paths']['data_dir']
+        charts_dir = config['paths']['charts_dir']
+        
+        # Create output directory for charts and visualizations
+        os.makedirs(charts_dir, exist_ok=True)
+        self.charts_dir = charts_dir
         
         # Load data
         self.input_absolute = pd.read_csv(f'{data_dir}/input_features_absolute.csv', parse_dates=['Date'], index_col='Date')
@@ -40,6 +53,18 @@ class FuelDemandAnalyzer:
             self.category_map = pickle.load(f)
             
         logger.info(f"Loaded data with {len(self.input_absolute)} rows and {self.input_absolute.shape[1]} features")
+        
+        # Configure visualization settings
+        self.dpi = config['visualization']['dpi']
+        self.save_formats = config['visualization']['save_formats']
+        self.charts_to_generate = config['visualization']['charts_to_generate']
+        
+    def save_figure(self, filename_base):
+        """Save figure in all configured formats"""
+        for fmt in self.save_formats:
+            full_path = os.path.join(self.charts_dir, f"{filename_base}.{fmt}")
+            plt.savefig(full_path, dpi=self.dpi)
+        plt.close()
         
     def analyze_data_structure(self):
         """
@@ -75,6 +100,10 @@ class FuelDemandAnalyzer:
         """
         Plot historical trends in gasoline and diesel demand
         """
+        if 'trends' not in self.charts_to_generate:
+            logger.info("Skipping demand trends charts based on configuration")
+            return
+            
         logger.info("Plotting demand trends...")
         
         # Create figure
@@ -93,8 +122,7 @@ class FuelDemandAnalyzer:
         plt.grid(True)
         
         plt.tight_layout()
-        plt.savefig('charts/demand_trends.png')
-        plt.close()
+        self.save_figure('demand_trends')
         
         # Plot year-over-year growth rates
         plt.figure(figsize=(12, 8))
@@ -117,36 +145,39 @@ class FuelDemandAnalyzer:
         plt.grid(True)
         
         plt.tight_layout()
-        plt.savefig('charts/demand_yoy_growth.png')
-        plt.close()
+        self.save_figure('demand_yoy_growth')
         
-        # Plot seasonality
-        plt.figure(figsize=(12, 8))
-        
-        # Create month column
-        demand_monthly = self.demand_absolute.copy()
-        demand_monthly['month'] = demand_monthly.index.month
-        
-        # Plot diesel seasonality
-        plt.subplot(2, 1, 1)
-        sns.boxplot(x='month', y='Diesel', data=demand_monthly.reset_index())
-        plt.title('US Diesel Demand Seasonality')
-        plt.grid(True)
-        
-        # Plot gasoline seasonality
-        plt.subplot(2, 1, 2)
-        sns.boxplot(x='month', y='Gasoline', data=demand_monthly.reset_index())
-        plt.title('US Gasoline Demand Seasonality')
-        plt.grid(True)
-        
-        plt.tight_layout()
-        plt.savefig('charts/demand_seasonality.png')
-        plt.close()
+        # Plot seasonality if enabled
+        if 'seasonality' in self.charts_to_generate:
+            plt.figure(figsize=(12, 8))
+            
+            # Create month column
+            demand_monthly = self.demand_absolute.copy()
+            demand_monthly['month'] = demand_monthly.index.month
+            
+            # Plot diesel seasonality
+            plt.subplot(2, 1, 1)
+            sns.boxplot(x='month', y='Diesel', data=demand_monthly.reset_index())
+            plt.title('US Diesel Demand Seasonality')
+            plt.grid(True)
+            
+            # Plot gasoline seasonality
+            plt.subplot(2, 1, 2)
+            sns.boxplot(x='month', y='Gasoline', data=demand_monthly.reset_index())
+            plt.title('US Gasoline Demand Seasonality')
+            plt.grid(True)
+            
+            plt.tight_layout()
+            self.save_figure('demand_seasonality')
         
     def analyze_correlations(self):
         """
         Analyze correlations between features and demand
         """
+        if 'correlations' not in self.charts_to_generate:
+            logger.info("Skipping correlation analysis based on configuration")
+            return
+            
         logger.info("Analyzing correlations...")
         
         # Calculate correlations with demand (both absolute and percent change)
@@ -168,10 +199,10 @@ class FuelDemandAnalyzer:
         logger.info(pct_corr_gasoline.head(10))
         
         # Save correlations to CSV for reference
-        abs_corr_diesel.to_csv('charts/diesel_absolute_correlations.csv')
-        abs_corr_gasoline.to_csv('charts/gasoline_absolute_correlations.csv')
-        pct_corr_diesel.to_csv('charts/diesel_pct_change_correlations.csv')
-        pct_corr_gasoline.to_csv('charts/gasoline_pct_change_correlations.csv')
+        abs_corr_diesel.to_csv(os.path.join(self.charts_dir, 'diesel_absolute_correlations.csv'))
+        abs_corr_gasoline.to_csv(os.path.join(self.charts_dir, 'gasoline_absolute_correlations.csv'))
+        pct_corr_diesel.to_csv(os.path.join(self.charts_dir, 'diesel_pct_change_correlations.csv'))
+        pct_corr_gasoline.to_csv(os.path.join(self.charts_dir, 'gasoline_pct_change_correlations.csv'))
         
         # Plot top correlations
         plt.figure(figsize=(14, 10))
@@ -186,17 +217,16 @@ class FuelDemandAnalyzer:
         top_negative = abs_corr_diesel_df.nsmallest(10, 'Correlation')
         
         plt.subplot(2, 1, 1)
-        ax = sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_positive)
+        sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_positive)
         plt.title('Top Positive Correlations with Diesel Demand')
         plt.tight_layout()
         
         plt.subplot(2, 1, 2)
-        ax = sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_negative)
+        sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_negative)
         plt.title('Top Negative Correlations with Diesel Demand')
         
         plt.tight_layout()
-        plt.savefig('charts/diesel_correlations.png')
-        plt.close()
+        self.save_figure('diesel_correlations')
         
         # Repeat for gasoline
         abs_corr_gasoline_df = abs_corr_gasoline.reset_index()
@@ -209,16 +239,15 @@ class FuelDemandAnalyzer:
         plt.figure(figsize=(14, 10))
         
         plt.subplot(2, 1, 1)
-        ax = sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_positive)
+        sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_positive)
         plt.title('Top Positive Correlations with Gasoline Demand')
         
         plt.subplot(2, 1, 2)
-        ax = sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_negative)
+        sns.barplot(x='Correlation', y='Variable', hue='Category', data=top_negative)
         plt.title('Top Negative Correlations with Gasoline Demand')
         
         plt.tight_layout()
-        plt.savefig('charts/gasoline_correlations.png')
-        plt.close()
+        self.save_figure('gasoline_correlations')
         
         # Create correlation matrix heatmap
         # Select top 20 correlated features for each fuel type
@@ -239,13 +268,16 @@ class FuelDemandAnalyzer:
                     vmin=-1, vmax=1, center=0, linewidths=.5)
         plt.title('Correlation Matrix: Top Features vs Fuel Demand')
         plt.tight_layout()
-        plt.savefig('charts/correlation_matrix.png')
-        plt.close()
+        self.save_figure('correlation_matrix')
         
     def perform_pca_analysis(self):
         """
         Perform PCA analysis to understand feature relationships
         """
+        if 'pca' not in self.charts_to_generate or not self.config['analysis']['pca']['enabled']:
+            logger.info("Skipping PCA analysis based on configuration")
+            return
+            
         logger.info("Performing PCA analysis...")
         
         # Fill missing values with median for PCA
@@ -269,8 +301,7 @@ class FuelDemandAnalyzer:
         plt.axhline(y=0.8, color='r', linestyle='--')
         plt.axhline(y=0.9, color='g', linestyle='--')
         plt.title('PCA Explained Variance')
-        plt.savefig('charts/pca_explained_variance.png')
-        plt.close()
+        self.save_figure('pca_explained_variance')
         
         # Get feature loadings for top components
         n_components = 3  # Number of components to analyze
@@ -288,12 +319,11 @@ class FuelDemandAnalyzer:
         for i in range(n_components):
             plt.subplot(n_components, 1, i+1)
             top_features = loadings.iloc[:, i].abs().sort_values(ascending=False).head(10).index
-            ax = sns.barplot(x=loadings.loc[top_features, f'PC{i+1}'], y=top_features)
+            sns.barplot(x=loadings.loc[top_features, f'PC{i+1}'], y=top_features)
             plt.title(f'Top Features in Principal Component {i+1}')
             plt.tight_layout()
         
-        plt.savefig('charts/pca_feature_loadings.png')
-        plt.close()
+        self.save_figure('pca_feature_loadings')
         
         # Plot first two components with category colors
         plt.figure(figsize=(12, 10))
@@ -313,8 +343,7 @@ class FuelDemandAnalyzer:
         plt.title('Feature Distribution in First Two Principal Components')
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig('charts/pca_feature_distribution.png')
-        plt.close()
+        self.save_figure('pca_feature_distribution')
         
     def rolling_regression_analysis(self, window_size=36, target='Diesel'):
         """
@@ -380,8 +409,7 @@ class FuelDemandAnalyzer:
         plt.ylabel('R²')
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f'charts/{target.lower()}_rolling_r2.png')
-        plt.close()
+        self.save_figure(f'{target.lower()}_rolling_r2')
         
         # Analyze feature stability
         feature_counts = {}
@@ -402,8 +430,7 @@ class FuelDemandAnalyzer:
         plt.ylabel('Frequency in Top Features')
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f'charts/{target.lower()}_stable_features.png')
-        plt.close()
+        self.save_figure(f'{target.lower()}_stable_features')
         
         return dates, r2_scores, top_features
         
@@ -475,20 +502,31 @@ class FuelDemandAnalyzer:
         plt.title(f'Top Leading Indicators for {target} Demand')
         plt.xlabel('Maximum Cross-Correlation')
         plt.tight_layout()
-        plt.savefig(f'charts/{target.lower()}_leading_indicators.png')
-        plt.close()
+        self.save_figure(f'{target.lower()}_leading_indicators')
         
         # Save results to CSV
-        results_df.to_csv(f'charts/{target.lower()}_cross_correlations.csv', index=False)
+        results_df.to_csv(os.path.join(self.charts_dir, f'{target.lower()}_cross_correlations.csv'), index=False)
         
         return results_df
-        
+
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Perform exploratory data analysis on fuel demand data')
+    parser.add_argument('--config', default='config.json', help='Path to configuration file')
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    # Set up logging
+    global logger
+    logger = setup_logging(config)
+    
     try:
         logger.info("Starting exploratory data analysis...")
         
         # Initialize analyzer
-        analyzer = FuelDemandAnalyzer()
+        analyzer = FuelDemandAnalyzer(config)
         
         # Analyze data structure
         analyzer.analyze_data_structure()
@@ -502,13 +540,19 @@ def main():
         # Perform PCA analysis
         analyzer.perform_pca_analysis()
         
-        # Perform rolling regression analysis
-        analyzer.rolling_regression_analysis(window_size=36, target='Diesel')
-        analyzer.rolling_regression_analysis(window_size=36, target='Gasoline')
+        # Perform rolling regression analysis if targets are enabled
+        if config['targets']['diesel']:
+            analyzer.rolling_regression_analysis(window_size=36, target='Diesel')
+        
+        if config['targets']['gasoline']:
+            analyzer.rolling_regression_analysis(window_size=36, target='Gasoline')
         
         # Perform cross-correlation analysis
-        diesel_indicators = analyzer.cross_correlation_analysis(target='Diesel', max_lag=12)
-        gasoline_indicators = analyzer.cross_correlation_analysis(target='Gasoline', max_lag=12)
+        if config['targets']['diesel']:
+            diesel_indicators = analyzer.cross_correlation_analysis(target='Diesel', max_lag=12)
+        
+        if config['targets']['gasoline']:
+            gasoline_indicators = analyzer.cross_correlation_analysis(target='Gasoline', max_lag=12)
         
         logger.info("Exploratory data analysis completed successfully.")
         
