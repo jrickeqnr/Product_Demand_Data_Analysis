@@ -345,7 +345,7 @@ class FuelDemandAnalyzer:
         plt.tight_layout()
         self.save_figure('pca_feature_distribution')
         
-    def rolling_regression_analysis(self, window_size=36, target='Diesel'):
+    def rolling_regression_analysis(self, window_size=60, target='Diesel'):
         """
         Perform rolling regression analysis to see how relationships change over time
         
@@ -542,10 +542,10 @@ def main():
         
         # Perform rolling regression analysis if targets are enabled
         if config['targets']['diesel']:
-            analyzer.rolling_regression_analysis(window_size=36, target='Diesel')
+            analyzer.rolling_regression_analysis(window_size=config['analysis']['rolling_window']['window'], target='Diesel')
         
         if config['targets']['gasoline']:
-            analyzer.rolling_regression_analysis(window_size=36, target='Gasoline')
+            analyzer.rolling_regression_analysis(window_size=config['analysis']['rolling_window']['window'], target='Gasoline')
         
         # Perform cross-correlation analysis
         if config['targets']['diesel']:

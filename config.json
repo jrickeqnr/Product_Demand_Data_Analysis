@@ -23,6 +23,9 @@
         "add_month_dummies": true,
         "add_quarter_dummies": true
       },
+      "rolling_window": {
+        "window": 60
+      },
       "pca": {
         "enabled": true,
         "variance_threshold": 0.9
