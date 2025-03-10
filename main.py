@@ -14,6 +14,7 @@ import time
 from datetime import datetime
 import subprocess
 import sys
+import json
 
 # Configure logging
 log_dir = 'logs'
@@ -30,13 +31,46 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def run_script(script_name, description):
+def ensure_config_exists():
+    """Check if config.json exists and generate it if not"""
+    config_path = 'config.json'
+    
+    if not os.path.exists(config_path):
+        logger.info("Configuration file not found. Generating default configuration...")
+        if run_script('generate_config.py', 'Configuration generation'):
+            logger.info("Default configuration generated successfully.")
+            return True
+        else:
+            logger.error("Failed to generate configuration file.")
+            return False
+    else:
+        # Validate that the config file is proper JSON
+        try:
+            with open(config_path, 'r') as f:
+                json.load(f)
+            logger.info("Configuration file exists and is valid.")
+            return True
+        except json.JSONDecodeError:
+            logger.error("Configuration file exists but contains invalid JSON.")
+            logger.info("Generating new default configuration...")
+            if run_script('generate_config.py', 'Configuration generation', ['--overwrite']):
+                logger.info("Default configuration generated successfully.")
+                return True
+            else:
+                logger.error("Failed to generate configuration file.")
+                return False
+
+def run_script(script_name, description, additional_args=None):
     """Run a Python script and handle any errors"""
     logger.info(f"Starting {description}...")
     start_time = time.time()
     
+    cmd = [sys.executable, script_name]
+    if additional_args:
+        cmd.extend(additional_args)
+    
     try:
-        result = subprocess.run([sys.executable, script_name], 
+        result = subprocess.run(cmd, 
                                check=True, 
                                stdout=subprocess.PIPE, 
                                stderr=subprocess.PIPE,
@@ -59,6 +93,8 @@ def main():
                         help='Skip exploratory data analysis step')
     parser.add_argument('--skip-model', action='store_true',
                         help='Skip model building step')
+    parser.add_argument('--regenerate-config', action='store_true',
+                        help='Regenerate configuration file with default settings')
     
     args = parser.parse_args()
     
@@ -72,6 +108,17 @@ def main():
     os.makedirs('charts', exist_ok=True)
     os.makedirs('models', exist_ok=True)
     os.makedirs('evaluation', exist_ok=True)
+    
+    # Step 0: Check/generate configuration
+    if args.regenerate_config:
+        logger.info("Regenerating configuration as requested...")
+        if not run_script('generate_config.py', 'Configuration generation', ['--overwrite']):
+            logger.error("Failed to regenerate configuration. Stopping workflow.")
+            return
+    else:
+        if not ensure_config_exists():
+            logger.error("Cannot proceed without valid configuration. Stopping workflow.")
+            return
     
     # Step 1: Fetch data
     if not args.skip_fetch:
