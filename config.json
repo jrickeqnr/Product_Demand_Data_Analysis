@@ -57,7 +57,7 @@
       "gasoline": true
     },
     "visualization": {
-      "charts_to_generate": ["trends", "seasonality", "correlations", "feature_importance", "predictions", "pca"],
+      "charts_to_generate": ["trends", "seasonality", "correlations", "feature_importance", "predictions", "pca","correlation_evolution","correlation_table"],
       "save_formats": ["png"],
       "dpi": 300
     },

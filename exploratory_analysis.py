@@ -269,6 +269,153 @@ class FuelDemandAnalyzer:
         plt.title('Correlation Matrix: Top Features vs Fuel Demand')
         plt.tight_layout()
         self.save_figure('correlation_matrix')
+
+    def plot_variable_correlation_evolution(self, target='Diesel', window_size=12):
+        """
+        Plot the correlation of each input variable vs fuel demand variables over time
+        with a heatmap showing overall correlation and line plot showing rolling correlation
+        
+        Args:
+            target (str): Target variable ('Diesel' or 'Gasoline')
+            window_size (int): Size of the rolling window in months for correlation
+        """
+        if 'correlation_evolution' not in self.charts_to_generate:
+            logger.info(f"Skipping correlation evolution plots for {target} based on configuration")
+            return
+            
+        logger.info(f"Plotting correlation evolution for {target}...")
+        
+        # Create a figure with appropriate size based on number of variables
+        num_vars = len(self.input_absolute.columns)
+        fig_height = max(10, num_vars * 0.3)  # Scale figure height based on number of variables
+        
+        # Create figure with gridspec for flexible layout
+        fig = plt.figure(figsize=(16, fig_height))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1, 3])
+        
+        # Calculate overall correlation
+        overall_corr = self.input_absolute.corrwith(self.demand_absolute[target]).sort_values(ascending=False)
+        
+        # Add category information
+        corr_df = overall_corr.reset_index()
+        corr_df.columns = ['Variable', 'Correlation']
+        corr_df['Category'] = corr_df['Variable'].map(self.category_map)
+        
+        # Sort by correlation value
+        corr_df = corr_df.sort_values('Correlation', ascending=False)
+        
+        # Plot heatmap of overall correlation
+        ax1 = fig.add_subplot(gs[0, 0])
+        sns.heatmap(
+            corr_df.set_index('Variable')[['Correlation']], 
+            cmap='coolwarm', 
+            vmin=-1, 
+            vmax=1,
+            center=0,
+            cbar_kws={'label': 'Correlation'},
+            ax=ax1
+        )
+        ax1.set_title(f'Overall Correlation\nwith {target} Demand')
+        ax1.set_ylabel('')
+        
+        # Plot rolling correlation for each variable
+        ax2 = fig.add_subplot(gs[0, 1])
+        
+        # Calculate rolling correlations
+        rolling_corrs = {}
+        common_idx = self.input_absolute.index.intersection(self.demand_absolute.index)
+        
+        for var in corr_df['Variable']:
+            # Get the variable and target data
+            var_data = self.input_absolute.loc[common_idx, var]
+            target_data = self.demand_absolute.loc[common_idx, target]
+            
+            # Calculate rolling correlation
+            rolling_corr = var_data.rolling(window=window_size).corr(target_data)
+            rolling_corrs[var] = rolling_corr
+        
+        # Find common date range for all rolling correlations
+        all_dates = pd.concat([pd.Series(rc) for rc in rolling_corrs.values()], axis=1).dropna().index
+        
+        # Plot top and bottom 15 variables by absolute correlation
+        top_vars = corr_df.nlargest(15, 'Correlation')['Variable']
+        bottom_vars = corr_df.nsmallest(15, 'Correlation')['Variable']
+        plot_vars = pd.concat([top_vars, bottom_vars])
+        
+        # Set up color palette based on categories
+        categories = corr_df['Category'].unique()
+        colors = sns.color_palette("husl", len(categories))
+        cat_color_map = dict(zip(categories, colors))
+        
+        for var in plot_vars:
+            # Get category for color
+            cat = corr_df.loc[corr_df['Variable'] == var, 'Category'].iloc[0]
+            color = cat_color_map[cat]
+            
+            # Plot the rolling correlation
+            ax2.plot(all_dates, rolling_corrs[var].loc[all_dates], 
+                    label=var, alpha=0.7, linewidth=1.5, color=color)
+        
+        # Add a zero line
+        ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+        
+        # Add legend outside the plot
+        ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+        
+        ax2.set_title(f'Rolling {window_size}-Month Correlation with {target} Demand')
+        ax2.set_xlabel('Date')
+        ax2.set_ylabel('Correlation Coefficient')
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        self.save_figure(f'{target.lower()}_correlation_evolution')
+        
+        # Create a separate plot for each category if there are many variables
+        if num_vars > 30 and 'correlation_by_category' in self.charts_to_generate:
+            logger.info(f"Creating category-specific correlation evolution plots for {target}...")
+            
+            for category in categories:
+                # Get variables in this category
+                cat_vars = corr_df[corr_df['Category'] == category]['Variable'].tolist()
+                
+                if len(cat_vars) == 0:
+                    continue
+                    
+                # Create figure
+                plt.figure(figsize=(14, 8))
+                
+                # Plot rolling correlation for each variable in this category
+                for var in cat_vars:
+                    plt.plot(all_dates, rolling_corrs[var].loc[all_dates], 
+                            label=var, alpha=0.7, linewidth=1.5)
+                
+                # Add a zero line
+                plt.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+                
+                plt.title(f'{category} Variables: Rolling Correlation with {target} Demand')
+                plt.xlabel('Date')
+                plt.ylabel('Correlation Coefficient')
+                plt.grid(True, alpha=0.3)
+                plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+                
+                plt.tight_layout()
+                self.save_figure(f'{target.lower()}_correlation_{category.lower().replace(" ", "_")}')
+                
+        # Create a summary table of correlations
+        if 'correlation_table' in self.charts_to_generate:
+            # Save correlation summary table
+            summary_df = corr_df.copy()
+            # Add rolling correlation stats (max, min, std)
+            for var in summary_df['Variable']:
+                if var in rolling_corrs:
+                    rc = rolling_corrs[var].dropna()
+                    summary_df.loc[summary_df['Variable'] == var, 'Max_Rolling_Corr'] = rc.max()
+                    summary_df.loc[summary_df['Variable'] == var, 'Min_Rolling_Corr'] = rc.min()
+                    summary_df.loc[summary_df['Variable'] == var, 'Std_Rolling_Corr'] = rc.std()
+                    summary_df.loc[summary_df['Variable'] == var, 'Volatility'] = rc.std() / abs(corr_df.loc[corr_df['Variable'] == var, 'Correlation'].iloc[0])
+            
+            # Save to CSV
+            summary_df.to_csv(os.path.join(self.charts_dir, f'{target.lower()}_correlation_summary.csv'), index=False)
         
     def perform_pca_analysis(self):
         """
@@ -536,6 +683,15 @@ def main():
         
         # Analyze correlations
         analyzer.analyze_correlations()
+        
+        # Plot correlation evolution for each variable
+        if config['targets']['diesel']:
+            analyzer.plot_variable_correlation_evolution(target='Diesel', 
+                                                        window_size=config['analysis']['rolling_window']['window'])
+        
+        if config['targets']['gasoline']:
+            analyzer.plot_variable_correlation_evolution(target='Gasoline', 
+                                                        window_size=config['analysis']['rolling_window']['window'])
         
         # Perform PCA analysis
         analyzer.perform_pca_analysis()
