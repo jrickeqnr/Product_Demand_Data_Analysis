@@ -86,42 +86,6 @@ class SynapseConnector:
         Returns:
             Optional[pd.DataFrame]: Query results as DataFrame, None if query fails
         """
-        if not self.connection or not self.sa_engine:
-            self.connect()
-                
-        try:
-            # Use direct connection with pandas to avoid SQLAlchemy issues
-            df = pd.read_sql(query, self.connection)
-            self.logger.info(f"Query executed successfully. Returned {len(df)} rows")
-            return df
-        except Exception as e:
-            error_msg = str(e)
-            if "closed automatically" in error_msg:
-                self.logger.warning("Connection was closed automatically. Reconnecting...")
-                # Try reconnecting and querying once more
-                try:
-                    self.connect()
-                    time.sleep(1)  # Small delay after reconnection
-                    df = pd.read_sql(query, self.connection)
-                    self.logger.info(f"Query executed successfully after reconnection. Returned {len(df)} rows")
-                    return df
-                except Exception as retry_e:
-                    self.logger.error(f"Query execution failed after reconnection: {str(retry_e)}")
-                    return None
-            else:
-                self.logger.error(f"Query execution failed: {error_msg}")
-                return None
-
-    def query_to_df(self, query: str) -> Optional[pd.DataFrame]:
-        """
-        Executes SQL query and returns results as pandas DataFrame.
-        
-        Args:
-            query (str): SQL query to execute
-            
-        Returns:
-            Optional[pd.DataFrame]: Query results as DataFrame, None if query fails
-        """
         try:
             if not self.connection or not self.sa_engine:
                 self.connect()
@@ -234,7 +198,7 @@ class BloombergDataFetcher:
         tickers_str = "', '".join(all_tickers)
         query = f"""
         SELECT 
-            lastUpdateDt AS Date,
+            lastUpdateDt AS date,
             recordIdentifier AS Ticker,
             Value,
             indxFreq AS Frequency
@@ -256,17 +220,17 @@ class BloombergDataFetcher:
                 
                 # Drop the temporary Ticker column and ensure Date is datetime
                 df = df.drop('Ticker', axis=1)
-                df['Date'] = pd.to_datetime(df['Date'])
+                df['date'] = pd.to_datetime(df['date'])
                 
-                return df[['Date', 'Category', 'Variable', 'Value', 'Frequency']]
+                return df[['date', 'Category', 'Variable', 'Value', 'Frequency']]
             else:
                 self.logger.warning("No data retrieved from the query")
                 # Return an empty DataFrame with the correct structure
-                return pd.DataFrame(columns=['Date', 'Category', 'Variable', 'Value', 'Frequency'])
+                return pd.DataFrame(columns=['date', 'Category', 'Variable', 'Value', 'Frequency'])
                 
         except Exception as e:
             self.logger.error(f"Error fetching data: {str(e)}")
-            return pd.DataFrame(columns=['Date', 'Category', 'Variable', 'Value', 'Frequency'])
+            return pd.DataFrame(columns=['date', 'Category', 'Variable', 'Value', 'Frequency'])
 
     def aggregate_to_monthly(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -275,10 +239,10 @@ class BloombergDataFetcher:
         # Check if the dataframe is empty
         if df.empty:
             self.logger.warning("Input DataFrame is empty, returning empty monthly DataFrame")
-            return pd.DataFrame(columns=['Date', 'Category', 'Variable', 'Value'])
+            return pd.DataFrame(columns=['date', 'Category', 'Variable', 'Value'])
             
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['YearMonth'] = df['Date'].dt.to_period('M')
+        df['date'] = pd.to_datetime(df['date'])
+        df['YearMonth'] = df['date'].dt.to_period('M')
         
         # Handle special null cases
         df['Frequency'] = df['Frequency'].fillna('Weekly')
@@ -316,16 +280,16 @@ class BloombergDataFetcher:
         # Check if dfs is empty
         if not dfs:
             self.logger.warning("No data frames to concatenate, returning empty DataFrame")
-            return pd.DataFrame(columns=['Date', 'Category', 'Variable', 'Value'])
+            return pd.DataFrame(columns=['date', 'Category', 'Variable', 'Value'])
             
         try:
             result = pd.concat(dfs, ignore_index=True)
-            result['Date'] = result['YearMonth'].dt.to_timestamp()
+            result['date'] = result['YearMonth'].dt.to_timestamp()
             
-            return result[['Date', 'Category', 'Variable', 'Value']].sort_values(['Date', 'Category', 'Variable'])
+            return result[['date', 'Category', 'Variable', 'Value']].sort_values(['date', 'Category', 'Variable'])
         except Exception as e:
             self.logger.error(f"Error in aggregation: {str(e)}")
-            return pd.DataFrame(columns=['Date', 'Category', 'Variable', 'Value'])
+            return pd.DataFrame(columns=['date', 'Category', 'Variable', 'Value'])
 
 
 class EIADataFetcher:
@@ -442,8 +406,8 @@ class DataProcessor:
             category_map = input_df.set_index('Variable')['Category'].to_dict()
             
             # Create pivot table for input data
-            input_df['Date'] = pd.to_datetime(input_df['Date'])
-            input_pivot = input_df.pivot(index='Date', columns='Variable', values='Value')
+            input_df['date'] = pd.to_datetime(input_df['date'])
+            input_pivot = input_df.pivot(index='date', columns='Variable', values='Value')
             
             # Calculate percent changes for input data
             input_pivot_pct = DataProcessor.calculate_percent_change(input_pivot)
@@ -463,14 +427,14 @@ class DataProcessor:
         
         try:
             # Convert dates to datetime
-            input_df['Date'] = pd.to_datetime(input_df['Date'])
+            input_df['date'] = pd.to_datetime(input_df['date'])
             demand_df['date'] = pd.to_datetime(demand_df['date'])
             
             # Set date as index for demand_df
             demand_df = demand_df.set_index('date')
             
             # Create pivot table for input data
-            input_pivot = input_df.pivot(index='Date', columns='Variable', values='Value')
+            input_pivot = input_df.pivot(index='date', columns='Variable', values='Value')
             
             # Calculate percent changes
             input_pivot_pct = DataProcessor.calculate_percent_change(input_pivot)

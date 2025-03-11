@@ -43,7 +43,7 @@ class FuelDemandForecaster:
         self.target_fuel = target_fuel
         
         # Load data
-        self.input_absolute = pd.read_csv(f'{data_dir}/input_features_absolute.csv', parse_dates=['Date'], index_col='Date')
+        self.input_absolute = pd.read_csv(f'{data_dir}/input_features_absolute.csv', parse_dates=['date'], index_col='date')
         self.input_pct = pd.read_csv(f'{data_dir}/input_features_percent_change.csv', parse_dates=['date'], index_col='date')
         self.demand_absolute = pd.read_csv(f'{data_dir}/demand_absolute.csv', parse_dates=['date'], index_col='date')
         self.demand_pct = pd.read_csv(f'{data_dir}/demand_percent_change.csv', parse_dates=['date'], index_col='date')
