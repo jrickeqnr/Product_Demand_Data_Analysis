@@ -1,0 +1,72 @@
+Product,Market,Category,Variable,Value,Scaling,Lag
+Gasoline,U.S.,Intercept,(blank),3970.657884,0,0
+Gasoline,U.S.,Transport,Vehicle Miles Travelled SA,0.029649907,0,0
+Gasoline,U.S.,Economic,Disposable Personal Income (Real),-0.170043244,0,0
+Gasoline,U.S.,Seasonality,1,-766.9934272,0,0
+Gasoline,U.S.,Seasonality,2,-440.7616791,0,0
+Gasoline,U.S.,Seasonality,7,139.240033,0,0
+Gasoline,U.S.,Seasonality,8,253.5389169,0,0
+Gasoline,U.S.,Seasonality,11,-200.2637767,0,0
+Gasoline,U.S.,Seasonality,12,-319.9895973,0,0
+Vehicle Miles Travelled SA,U.S.,Intercept,(blank),347978.046,0,0
+Vehicle Miles Travelled SA,U.S.,Price,U.S. Gasoline - Average Retail,-125.4327817,0,1
+Vehicle Miles Travelled SA,U.S.,Labor,Unemployment Rate (U-3),-85.6470712,0.01,0
+Vehicle Miles Travelled SA,U.S.,Economic,Personal Consumption of Non-Durable Goods,22.54590608,0,0
+Vehicle Miles Travelled SA,U.S.,Economic 1,GDP - Real,-38.68400925,10,0
+Vehicle Miles Travelled SA,U.S.,Seasonality,3,-9237.931107,0,0
+Vehicle Miles Travelled SA,U.S.,Seasonality,7,5042.820933,0,0
+Personal Consumption of Non-Durable Goods,U.S.,Intercept,(blank),1303.148671,0,0
+Personal Consumption of Non-Durable Goods,U.S.,Financial,S&P 500 EPS,44.52040727,0,0
+Personal Consumption of Non-Durable Goods,U.S.,Seasonality,3,87.97182166,0,0
+Diesel,U.S.,Intercept,(blank),-1630.774968,0,0
+Diesel,U.S.,Price,U.S. Diesel - Average Retail,0.377687617,0,3
+Diesel,U.S.,Economic,Industrial Production SA,21.13342427,0,0
+Diesel,U.S.,Economic 1,GDP - Real,7.185422531,100,0
+Diesel,U.S.,PMI,ISM Manufacturing,9.207928167,0,0
+Diesel,U.S.,Seasonality,7,-237.3184278,0,0
+Diesel,U.S.,Seasonality,10,111.2202903,0,0
+Diesel,U.S.,Seasonality,12,-140.920243,0,0
+PMI - ISM Manufacturing,U.S.,Intercept,(blank),55.76740819,0,0
+PMI - ISM Manufacturing,U.S.,Price,U.S. Copper,0.050996762,0,0
+PMI - ISM Manufacturing,U.S.,Industrial,Raw Steel Production,1.550700914,0,0
+PMI - ISM Manufacturing,U.S.,Financial,Fed Funds Rate,-0.893854427,0,3
+PMI - ISM Manufacturing,U.S.,Economic,Producer Price Index,-0.135858191,0,6
+Heating Oil,U.S.,Intercept,(blank),48.49267306,0,0
+Heating Oil,U.S.,Price,PADD 1 Heating Oil,0.072313029,0,1
+Heating Oil,U.S.,Weather,Heating Degree Days,0.418360758,0,0
+Jet,U.S.,Intercept,(blank),1097.224325,0,0
+Jet,U.S.,Transport,Airline Load Factor,10.42936385,0,0
+Jet,U.S.,Labor,Unemployment Rate (U-3),-66.52980536,0,0
+Jet,U.S.,Price,PADD 1 Jet * Diesel,-0.087487875,100,0
+Jet,U.S.,Seasonality,1,-54.40699094,0,0
+Jet,U.S.,Seasonality,2,-70.89831403,0,0
+Residual Fuel Oil,U.S.,Intercept,(blank),-298.911628,0,0
+Residual Fuel Oil,U.S.,Price,PADD 3 LLS/Mars,0.178633774,0.01,0
+Residual Fuel Oil,U.S.,Demand,Diesel,0.508891678,10,0
+Residual Fuel Oil,U.S.,Trade,Baltic Dry Index,0.126653268,10,0
+Residual Fuel Oil,U.S.,Transport,Vehicle Miles Travelled SA,1.212779118,1000,0
+Residual Fuel Oil,U.S.,Seasonality,2,0.643178198,0,0
+Baltic Dry Index,U.S.,Intercept,(blank),301.7704404,0,0
+Baltic Dry Index,U.S.,Economic,Personal Consumption of Non-Durable Goods,-101.8988627,100,0
+Baltic Dry Index,U.S.,Financial,S&P 500 EPS,83.38414705,0,0
+Baltic Dry Index,U.S.,Price,PADD 3 Propane,6.462796515,0,0
+Baltic Dry Index,U.S.,Labor,Unemployment Rate (U-3),70.11283992,0,0
+Baltic Dry Index,U.S.,Seasonality,2,-336.1532238,0,0
+Propane,U.S.,Intercept,(blank),652.053252,0,0
+Propane,U.S.,Price,PADD 3 Propane,-0.166360188,0,0
+Propane,U.S.,Weather,Heating Degree Days,0.716686752,0,0
+Propane,U.S.,Seasonality,4,-171.7899161,0,0
+Propane,U.S.,Seasonality,5,-154.5180143,0,0
+Propane,U.S.,Seasonality,6,-111.6795894,0,0
+Propane,U.S.,Seasonality,7,-20.4515168,0,0
+Other Products,U.S.,Intercept,(blank),1109.421053,0,0
+Other Products,U.S.,Seasonality,1,-654.8210526,0,0
+Other Products,U.S.,Seasonality,2,-641.3210526,0,0
+Other Products,U.S.,Seasonality,3,-287.6210526,0,0
+Other Products,U.S.,Seasonality,5,220.7789474,0,0
+Other Products,U.S.,Seasonality,6,367.0789474,0,0
+Other Products,U.S.,Seasonality,7,339.0789474,0,0
+Other Products,U.S.,Seasonality,8,417.9122807,0,0
+Other Products,U.S.,Seasonality,9,144.6900585,0,0
+Other Products,U.S.,Seasonality,11,-206.754386,0,0
+Other Products,U.S.,Seasonality,12,-450.9766082,0,0
