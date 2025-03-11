@@ -68,13 +68,13 @@ def main():
         # Apply date filtering if configured
         if start_date or end_date:
             logger.info(f"Filtering data by date range: {start_date} to {end_date or 'present'}")
-            bloomberg_raw_data['Date'] = pd.to_datetime(bloomberg_raw_data['Date'])
+            bloomberg_raw_data['date'] = pd.to_datetime(bloomberg_raw_data['date'])
             
             if start_date:
-                bloomberg_raw_data = bloomberg_raw_data[bloomberg_raw_data['Date'] >= start_date]
+                bloomberg_raw_data = bloomberg_raw_data[bloomberg_raw_data['date'] >= start_date]
                 
             if end_date:
-                bloomberg_raw_data = bloomberg_raw_data[bloomberg_raw_data['Date'] <= end_date]
+                bloomberg_raw_data = bloomberg_raw_data[bloomberg_raw_data['date'] <= end_date]
         
         # Save raw Bloomberg data first
         bloomberg_raw_data.to_csv(os.path.join(data_dir, 'bloomberg_raw_data.csv'), index=False)

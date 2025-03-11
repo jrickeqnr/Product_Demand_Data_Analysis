@@ -24,15 +24,12 @@ sns.set_palette('Set2')
 
 def load_data():
     """Load input features and demand data"""
-    features_df = pd.read_csv('data/input_features_absolute.csv', parse_dates=['Date'])
+    features_df = pd.read_csv('data/input_features_absolute.csv', parse_dates=['date'])
     demand_df = pd.read_csv('data/fuel_demand_data.csv', parse_dates=['date'])
     
-    # Rename columns to be consistent
-    demand_df = demand_df.rename(columns={'date': 'Date'})
-    
     # Set Date as index for both DataFrames
-    features_df = features_df.set_index('Date')
-    demand_df = demand_df.set_index('Date')
+    features_df = features_df.set_index('date')
+    demand_df = demand_df.set_index('date')
     
     print(f"Features data loaded: {features_df.shape[0]} rows, {features_df.shape[1]} columns")
     print(f"Demand data loaded: {demand_df.shape[0]} rows, {demand_df.shape[1]} columns")
