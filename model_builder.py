@@ -26,9 +26,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create directories for models and evaluation
-os.makedirs('models', exist_ok=True)
-os.makedirs('evaluation', exist_ok=True)
+def ensure_directory(directory):
+    """Create directory if it doesn't exist"""
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        logger.info(f"Created directory: {directory}")
+    return directory
+
+# Create base directories
+ensure_directory('models')
+ensure_directory('evaluation')
 
 class FuelDemandForecaster:
     def __init__(self, data_dir='data', target_fuel='Diesel'):
@@ -41,6 +48,10 @@ class FuelDemandForecaster:
         """
         self.data_dir = data_dir
         self.target_fuel = target_fuel
+        
+        # Create model-specific subdirectories
+        self.model_dir = ensure_directory(os.path.join('models', target_fuel.lower()))
+        self.eval_dir = ensure_directory(os.path.join('evaluation', target_fuel.lower()))
         
         # Load data
         self.input_absolute = pd.read_csv(f'{data_dir}/input_features_absolute.csv', parse_dates=['date'], index_col='date')
@@ -153,7 +164,7 @@ class FuelDemandForecaster:
         
         return X_train, X_test, y_train, y_test
         
-    def build_models(self, X, y, test_size=12, save_models=True):
+    def build_models(self, X, y, test_size=12, save_models=True, model_type='absolute'):
         """
         Build and evaluate multiple forecasting models
         
@@ -162,14 +173,19 @@ class FuelDemandForecaster:
             y (pd.Series): Target data
             test_size (int): Number of months to use for testing
             save_models (bool): Whether to save trained models
+            model_type (str): Type of model ('absolute' or 'percent_change')
             
         Returns:
             dict: Dictionary of model evaluation results
         """
+        # Create subdirectory for model type
+        model_subdir = ensure_directory(os.path.join(self.model_dir, model_type))
+        eval_subdir = ensure_directory(os.path.join(self.eval_dir, model_type))
+        
         # Split data
         X_train, X_test, y_train, y_test = self.train_test_split(X, y, test_size)
         
-        logger.info(f"Training models with {len(X_train)} samples, testing with {len(X_test)} samples")
+        logger.info(f"Training {model_type} models for {self.target_fuel} with {len(X_train)} samples, testing with {len(X_test)} samples")
         
         # Define models to evaluate
         models = {
@@ -223,29 +239,35 @@ class FuelDemandForecaster:
             
             # Save model if requested
             if save_models:
-                with open(f'models/{self.target_fuel.lower()}_{name.replace(" ", "_").lower()}.pkl', 'wb') as f:
+                # Save in the model type's subdirectory
+                model_path = os.path.join(model_subdir, f"{name.replace(' ', '_').lower()}.pkl")
+                with open(model_path, 'wb') as f:
                     pickle.dump(model, f)
                     
             logger.info(f"{name} - Train RMSE: {train_rmse:.4f}, Test RMSE: {test_rmse:.4f}, Test R²: {test_r2:.4f}")
         
         # Plot results
-        self.plot_model_comparisons(results, predictions)
+        self.plot_model_comparisons(results, predictions, model_type)
         
         # Save feature importance for tree-based models
         for name in ['Random Forest', 'Gradient Boosting', 'XGBoost']:
             if name in models:
-                self.plot_feature_importance(models[name], X.columns, name)
+                self.plot_feature_importance(models[name], X.columns, name, model_type)
                 
         return results, predictions
         
-    def plot_model_comparisons(self, results, predictions):
+    def plot_model_comparisons(self, results, predictions, model_type='absolute'):
         """
         Plot comparison of model performance
         
         Args:
             results (dict): Dictionary of model evaluation results
             predictions (dict): Dictionary of model predictions
+            model_type (str): Type of model ('absolute' or 'percent_change')
         """
+        # Get subdirectory for evaluation outputs
+        eval_subdir = os.path.join(self.eval_dir, model_type)
+        
         # Create DataFrame from results
         metrics_df = pd.DataFrame({
             model: {
@@ -260,26 +282,26 @@ class FuelDemandForecaster:
         }).T
         
         # Save metrics to CSV
-        metrics_df.to_csv(f'evaluation/{self.target_fuel.lower()}_model_performance.csv')
+        metrics_df.to_csv(os.path.join(eval_subdir, 'model_performance.csv'))
         
         # Plot RMSE comparison
         plt.figure(figsize=(12, 6))
         metrics_df[['Train RMSE', 'Test RMSE']].plot(kind='bar')
-        plt.title(f'Model RMSE Comparison - {self.target_fuel}')
+        plt.title(f'{self.target_fuel} - Model RMSE Comparison ({model_type})')
         plt.ylabel('RMSE')
         plt.grid(True, axis='y')
         plt.tight_layout()
-        plt.savefig(f'evaluation/{self.target_fuel.lower()}_rmse_comparison.png')
+        plt.savefig(os.path.join(eval_subdir, 'rmse_comparison.png'))
         plt.close()
         
         # Plot R² comparison
         plt.figure(figsize=(12, 6))
         metrics_df[['Train R²', 'Test R²']].plot(kind='bar')
-        plt.title(f'Model R² Comparison - {self.target_fuel}')
+        plt.title(f'{self.target_fuel} - Model R² Comparison ({model_type})')
         plt.ylabel('R²')
         plt.grid(True, axis='y')
         plt.tight_layout()
-        plt.savefig(f'evaluation/{self.target_fuel.lower()}_r2_comparison.png')
+        plt.savefig(os.path.join(eval_subdir, 'r2_comparison.png'))
         plt.close()
         
         # Plot actual vs predicted for best model
@@ -310,7 +332,7 @@ class FuelDemandForecaster:
         plt.grid(True)
         
         plt.tight_layout()
-        plt.savefig(f'evaluation/{self.target_fuel.lower()}_best_model_predictions.png')
+        plt.savefig(os.path.join(eval_subdir, 'best_model_predictions.png'))
         plt.close()
         
         # Plot time series of actual vs predicted for test data
@@ -323,10 +345,10 @@ class FuelDemandForecaster:
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f'evaluation/{self.target_fuel.lower()}_test_predictions_timeseries.png')
+        plt.savefig(os.path.join(eval_subdir, 'test_predictions_timeseries.png'))
         plt.close()
         
-    def plot_feature_importance(self, model, feature_names, model_name):
+    def plot_feature_importance(self, model, feature_names, model_name, model_type='absolute'):
         """
         Plot feature importance for tree-based models
         
@@ -334,7 +356,12 @@ class FuelDemandForecaster:
             model: Trained model
             feature_names: Names of features
             model_name: Name of the model
+            model_type (str): Type of model ('absolute' or 'percent_change')
         """
+        # Get subdirectory for evaluation outputs
+        eval_subdir = os.path.join(self.eval_dir, model_type, 'feature_importance')
+        ensure_directory(eval_subdir)
+        
         try:
             # Get feature importance
             if hasattr(model, 'feature_importances_'):
@@ -355,11 +382,11 @@ class FuelDemandForecaster:
             top_n = min(20, len(feature_names))
             
             plt.figure(figsize=(12, 8))
-            plt.title(f'Feature Importance - {model_name} - {self.target_fuel}')
+            plt.title(f'{self.target_fuel} - Feature Importance - {model_name}')
             plt.bar(range(top_n), importance[indices][:top_n], align='center')
             plt.xticks(range(top_n), [feature_names[i] for i in indices][:top_n], rotation=90)
             plt.tight_layout()
-            plt.savefig(f'evaluation/{self.target_fuel.lower()}_{model_name.lower().replace(" ", "_")}_feature_importance.png')
+            plt.savefig(os.path.join(eval_subdir, f'{model_name.lower().replace(" ", "_")}.png'))
             plt.close()
             
             # Save importance to CSV for reference
@@ -369,14 +396,14 @@ class FuelDemandForecaster:
             }).sort_values('Importance', ascending=False)
             
             feature_importance_df.to_csv(
-                f'evaluation/{self.target_fuel.lower()}_{model_name.lower().replace(" ", "_")}_feature_importance.csv',
+                os.path.join(eval_subdir, f'{model_name.lower().replace(" ", "_")}.csv'),
                 index=False
             )
             
         except Exception as e:
             logger.error(f"Error plotting feature importance: {str(e)}")
             
-    def optimize_model(self, model_type, X, y, test_size=12, param_grid=None):
+    def optimize_model(self, model_type, X, y, test_size=12, param_grid=None, data_type='absolute'):
         """
         Optimize hyperparameters for a specific model
         
@@ -386,10 +413,15 @@ class FuelDemandForecaster:
             y (pd.Series): Target data
             test_size (int): Number of months to use for testing
             param_grid (dict): Parameter grid for GridSearchCV
+            data_type (str): Type of data ('absolute' or 'percent_change')
             
         Returns:
             tuple: Best model, best parameters, CV results
         """
+        # Create subdirectories for optimized models
+        model_subdir = ensure_directory(os.path.join(self.model_dir, data_type, 'optimized'))
+        eval_subdir = ensure_directory(os.path.join(self.eval_dir, data_type, 'optimized'))
+        
         # Split data
         X_train, X_test, y_train, y_test = self.train_test_split(X, y, test_size)
         
@@ -446,7 +478,7 @@ class FuelDemandForecaster:
         )
         
         # Fit grid search
-        logger.info(f"Optimizing {model_type} model...")
+        logger.info(f"Optimizing {model_type} model for {self.target_fuel} using {data_type} data...")
         grid_search.fit(X_train, y_train)
         
         # Get best model and parameters
@@ -463,29 +495,35 @@ class FuelDemandForecaster:
         logger.info(f"Optimized {model_type} - Test RMSE: {test_rmse:.4f}, Test R²: {test_r2:.4f}")
         
         # Save best model
-        with open(f'models/{self.target_fuel.lower()}_{model_type}_optimized.pkl', 'wb') as f:
+        model_path = os.path.join(model_subdir, f"{model_type}.pkl")
+        with open(model_path, 'wb') as f:
             pickle.dump(best_model, f)
         
         # Plot feature importance if applicable
         if model_type in ['randomforest', 'gbm', 'xgboost']:
-            self.plot_feature_importance(best_model, X.columns, f"{model_type}_optimized")
+            self.plot_feature_importance(
+                best_model, 
+                X.columns, 
+                f"{model_type}_optimized", 
+                data_type
+            )
             
         # Plot predictions
         plt.figure(figsize=(12, 6))
         plt.plot(y_test.index, y_test, 'b-', label='Actual')
         plt.plot(y_test.index, y_pred, 'r--', label='Predicted')
-        plt.title(f'{self.target_fuel} - Optimized {model_type.capitalize()} Predictions')
+        plt.title(f'{self.target_fuel} - Optimized {model_type.capitalize()} Predictions ({data_type})')
         plt.xlabel('Date')
         plt.ylabel('Value')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f'evaluation/{self.target_fuel.lower()}_{model_type}_optimized_predictions.png')
+        plt.savefig(os.path.join(eval_subdir, f'{model_type}_predictions.png'))
         plt.close()
         
         return best_model, best_params, grid_search.cv_results_
         
-    def ensemble_prediction(self, X, y, test_size=12, models_to_use=None):
+    def ensemble_prediction(self, X, y, test_size=12, models_to_use=None, data_type='absolute'):
         """
         Create an ensemble prediction by averaging results from multiple models
         
@@ -494,10 +532,15 @@ class FuelDemandForecaster:
             y (pd.Series): Target data
             test_size (int): Number of months to use for testing
             models_to_use (list): List of model types to include in ensemble
+            data_type (str): Type of data ('absolute' or 'percent_change')
             
         Returns:
             dict: Dictionary with ensemble results
         """
+        # Create subdirectories for ensemble
+        model_subdir = ensure_directory(os.path.join(self.model_dir, data_type, 'ensemble'))
+        eval_subdir = ensure_directory(os.path.join(self.eval_dir, data_type, 'ensemble'))
+        
         # Split data
         X_train, X_test, y_train, y_test = self.train_test_split(X, y, test_size)
         
@@ -510,12 +553,12 @@ class FuelDemandForecaster:
         predictions = {}
         
         for model_type in models_to_use:
-            # Load optimized model if available
-            model_path = f'models/{self.target_fuel.lower()}_{model_type}_optimized.pkl'
+            # Try to load optimized model first
+            optimized_path = os.path.join(self.model_dir, data_type, 'optimized', f"{model_type}.pkl")
             
-            if os.path.exists(model_path):
+            if os.path.exists(optimized_path):
                 logger.info(f"Loading optimized {model_type} model...")
-                with open(model_path, 'rb') as f:
+                with open(optimized_path, 'rb') as f:
                     model = pickle.load(f)
             else:
                 # Create a default model
@@ -549,7 +592,7 @@ class FuelDemandForecaster:
         ensemble_mae = mean_absolute_error(y_test, ensemble_pred)
         ensemble_r2 = r2_score(y_test, ensemble_pred)
         
-        logger.info(f"Ensemble model - Test RMSE: {ensemble_rmse:.4f}, Test R²: {ensemble_r2:.4f}")
+        logger.info(f"Ensemble model for {self.target_fuel} ({data_type}) - Test RMSE: {ensemble_rmse:.4f}, Test R²: {ensemble_r2:.4f}")
         
         # Plot ensemble results
         plt.figure(figsize=(12, 6))
@@ -560,13 +603,13 @@ class FuelDemandForecaster:
         for model_type in models_to_use:
             plt.plot(y_test.index, predictions[model_type], '--', alpha=0.3, label=f'{model_type.capitalize()} Predicted')
             
-        plt.title(f'{self.target_fuel} - Ensemble Model Predictions')
+        plt.title(f'{self.target_fuel} - Ensemble Model Predictions ({data_type})')
         plt.xlabel('Date')
         plt.ylabel('Value')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f'evaluation/{self.target_fuel.lower()}_ensemble_predictions.png')
+        plt.savefig(os.path.join(eval_subdir, 'predictions.png'))
         plt.close()
         
         # Save ensemble results
@@ -580,7 +623,7 @@ class FuelDemandForecaster:
             'individual_preds': predictions
         }
         
-        with open(f'models/{self.target_fuel.lower()}_ensemble_results.pkl', 'wb') as f:
+        with open(os.path.join(model_subdir, 'results.pkl'), 'wb') as f:
             pickle.dump(ensemble_results, f)
             
         return ensemble_results
@@ -593,7 +636,7 @@ def main():
         logger.info("Building models for Diesel demand...")
         diesel_forecaster = FuelDemandForecaster(target_fuel='Diesel')
         
-        # Prepare data
+        # Prepare data for absolute values
         X_diesel, y_diesel = diesel_forecaster.prepare_data(
             use_pct_change=False,  # Start with absolute values
             lag_features=True,
@@ -602,7 +645,9 @@ def main():
         )
         
         # Build and evaluate models
-        diesel_results, diesel_predictions = diesel_forecaster.build_models(X_diesel, y_diesel, test_size=12)
+        diesel_results, diesel_predictions = diesel_forecaster.build_models(
+            X_diesel, y_diesel, test_size=12, model_type='absolute'
+        )
         
         # Optimize the best performing model type
         best_model_diesel = max(diesel_results.items(), key=lambda x: x[1]['test_r2'])[0]
@@ -619,7 +664,7 @@ def main():
             model_type = 'elasticnet'  # Default
             
         logger.info(f"Optimizing {model_type} model for Diesel demand...")
-        diesel_forecaster.optimize_model(model_type, X_diesel, y_diesel)
+        diesel_forecaster.optimize_model(model_type, X_diesel, y_diesel, data_type='absolute')
         
         # Try percent change model as well
         logger.info("Building percent change models for Diesel demand...")
@@ -631,12 +676,12 @@ def main():
         )
         
         diesel_pct_results, _ = diesel_forecaster.build_models(
-            X_diesel_pct, y_diesel_pct, test_size=12
+            X_diesel_pct, y_diesel_pct, test_size=12, model_type='percent_change'
         )
         
         # Build ensemble model
         logger.info("Building ensemble model for Diesel demand...")
-        diesel_forecaster.ensemble_prediction(X_diesel, y_diesel)
+        diesel_forecaster.ensemble_prediction(X_diesel, y_diesel, data_type='absolute')
         
         # Repeat for Gasoline demand
         logger.info("Building models for Gasoline demand...")
@@ -651,7 +696,9 @@ def main():
         )
         
         # Build and evaluate models
-        gasoline_results, gasoline_predictions = gasoline_forecaster.build_models(X_gasoline, y_gasoline, test_size=12)
+        gasoline_results, gasoline_predictions = gasoline_forecaster.build_models(
+            X_gasoline, y_gasoline, test_size=12, model_type='absolute'
+        )
         
         # Optimize the best performing model type
         best_model_gasoline = max(gasoline_results.items(), key=lambda x: x[1]['test_r2'])[0]
@@ -668,7 +715,7 @@ def main():
             model_type = 'elasticnet'
             
         logger.info(f"Optimizing {model_type} model for Gasoline demand...")
-        gasoline_forecaster.optimize_model(model_type, X_gasoline, y_gasoline)
+        gasoline_forecaster.optimize_model(model_type, X_gasoline, y_gasoline, data_type='absolute')
         
         # Try percent change model as well
         logger.info("Building percent change models for Gasoline demand...")
@@ -680,12 +727,12 @@ def main():
         )
         
         gasoline_pct_results, _ = gasoline_forecaster.build_models(
-            X_gasoline_pct, y_gasoline_pct, test_size=12
+            X_gasoline_pct, y_gasoline_pct, test_size=12, model_type='percent_change'
         )
         
         # Build ensemble model
         logger.info("Building ensemble model for Gasoline demand...")
-        gasoline_forecaster.ensemble_prediction(X_gasoline, y_gasoline)
+        gasoline_forecaster.ensemble_prediction(X_gasoline, y_gasoline, data_type='absolute')
         
         logger.info("Model building process completed successfully.")
         

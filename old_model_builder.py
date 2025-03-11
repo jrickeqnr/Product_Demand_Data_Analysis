@@ -22,6 +22,13 @@ from datetime import datetime
 plt.style.use('seaborn-v0_8-whitegrid')
 sns.set_palette('Set2')
 
+def ensure_directory(directory):
+    """Create directory if it doesn't exist"""
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        print(f"Created directory: {directory}")
+    return directory
+
 def load_data():
     """Load input features and demand data"""
     features_df = pd.read_csv('data/input_features_absolute.csv', parse_dates=['date'])
@@ -153,7 +160,8 @@ def evaluate_model(actual, predicted, model_name):
 
 def plot_results(actual, predicted, model_name, output_dir='charts'):
     """Plot actual vs predicted values and residuals"""
-    os.makedirs(output_dir, exist_ok=True)
+    # Create excel_linear subfolder within the output directory
+    output_dir = ensure_directory(os.path.join(output_dir, 'excel_linear'))
     
     # Create a DataFrame for plotting
     results_df = pd.DataFrame({
@@ -228,9 +236,13 @@ def main():
     """Main function to run the backtest"""
     print("Starting linear model backtest...")
     
-    # Create output directories
-    os.makedirs('charts', exist_ok=True)
-    os.makedirs('evaluation', exist_ok=True)
+    # Create base output directories
+    ensure_directory('charts')
+    ensure_directory('evaluation')
+    
+    # Create excel_linear subfolders
+    charts_dir = ensure_directory('charts/excel_linear')
+    eval_dir = ensure_directory('evaluation/excel_linear')
     
     # Load data
     features_df, demand_df = load_data()
@@ -260,18 +272,19 @@ def main():
         eval_results = evaluate_model(data[product], predictions, product)
         all_results.append(eval_results)
         
-        # Plot results
-        results_df = plot_results(data[product], predictions, product)
+        # Plot results (using charts/excel_linear directory)
+        results_df = plot_results(data[product], predictions, product, 'charts')
     
-    # Save evaluation results
+    # Save evaluation results to evaluation/excel_linear directory
     eval_df = pd.DataFrame(all_results)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    eval_df.to_csv(f"evaluation/model_evaluation_{timestamp}.csv", index=False)
-    print(f"Model evaluation saved to evaluation/model_evaluation_{timestamp}.csv")
+    eval_path = os.path.join(eval_dir, "linear_model_evaluation.csv")
+    eval_df.to_csv(eval_path, index=False)
+    print(f"Model evaluation saved to {eval_path}")
     
-    # Save predictions vs actuals
-    all_predictions.to_csv(f"evaluation/predictions_vs_actuals_{timestamp}.csv")
-    print(f"Predictions saved to evaluation/predictions_vs_actuals_{timestamp}.csv")
+    # Save predictions vs actuals to evaluation/excel_linear directory
+    predictions_path = os.path.join(eval_dir, "linear_predictions_vs_actuals.csv")
+    all_predictions.to_csv(predictions_path)
+    print(f"Predictions saved to {predictions_path}")
     
     print("\nBacktest completed successfully!")
     

@@ -32,6 +32,13 @@ def setup_logging(config):
     
     return logging.getLogger(__name__)
 
+def ensure_directory(directory):
+    """Create directory if it doesn't exist"""
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        logger.info(f"Created directory: {directory}")
+    return directory
+
 class FuelDemandAnalyzer:
     def __init__(self, config):
         self.config = config
@@ -39,7 +46,7 @@ class FuelDemandAnalyzer:
         charts_dir = config['paths']['charts_dir']
         
         # Create output directory for charts and visualizations
-        os.makedirs(charts_dir, exist_ok=True)
+        ensure_directory(charts_dir)
         self.charts_dir = charts_dir
         
         # Load data
@@ -59,11 +66,26 @@ class FuelDemandAnalyzer:
         self.save_formats = config['visualization']['save_formats']
         self.charts_to_generate = config['visualization']['charts_to_generate']
         
-    def save_figure(self, filename_base):
-        """Save figure in all configured formats"""
+    def save_figure(self, filename_base, subfolder=None):
+        """
+        Save figure in all configured formats
+        
+        Args:
+            filename_base (str): Base filename without extension
+            subfolder (str, optional): Subfolder to save in (e.g., 'diesel' or 'gasoline')
+        """
+        # Determine the directory path
+        if subfolder:
+            # Create the subfolder if it doesn't exist
+            output_dir = ensure_directory(os.path.join(self.charts_dir, subfolder))
+        else:
+            output_dir = self.charts_dir
+            
+        # Save in all configured formats
         for fmt in self.save_formats:
-            full_path = os.path.join(self.charts_dir, f"{filename_base}.{fmt}")
+            full_path = os.path.join(output_dir, f"{filename_base}.{fmt}")
             plt.savefig(full_path, dpi=self.dpi)
+            
         plt.close()
         
     def analyze_data_structure(self):
@@ -122,7 +144,7 @@ class FuelDemandAnalyzer:
         plt.grid(True)
         
         plt.tight_layout()
-        self.save_figure('demand_trends')
+        self.save_figure('demand_trends')  # General chart - no subfolder
         
         # Plot year-over-year growth rates
         plt.figure(figsize=(12, 8))
@@ -145,7 +167,7 @@ class FuelDemandAnalyzer:
         plt.grid(True)
         
         plt.tight_layout()
-        self.save_figure('demand_yoy_growth')
+        self.save_figure('demand_yoy_growth')  # General chart - no subfolder
         
         # Plot seasonality if enabled
         if 'seasonality' in self.charts_to_generate:
@@ -168,7 +190,7 @@ class FuelDemandAnalyzer:
             plt.grid(True)
             
             plt.tight_layout()
-            self.save_figure('demand_seasonality')
+            self.save_figure('demand_seasonality')  # General chart - no subfolder
         
     def analyze_correlations(self):
         """
@@ -198,13 +220,17 @@ class FuelDemandAnalyzer:
         logger.info("\nTop 10 features correlated with Gasoline demand changes:")
         logger.info(pct_corr_gasoline.head(10))
         
-        # Save correlations to CSV for reference
-        abs_corr_diesel.to_csv(os.path.join(self.charts_dir, 'diesel_absolute_correlations.csv'))
-        abs_corr_gasoline.to_csv(os.path.join(self.charts_dir, 'gasoline_absolute_correlations.csv'))
-        pct_corr_diesel.to_csv(os.path.join(self.charts_dir, 'diesel_pct_change_correlations.csv'))
-        pct_corr_gasoline.to_csv(os.path.join(self.charts_dir, 'gasoline_pct_change_correlations.csv'))
+        # Save correlations to CSV for reference - each in its own subfolder
+        diesel_dir = ensure_directory(os.path.join(self.charts_dir, 'diesel'))
+        gasoline_dir = ensure_directory(os.path.join(self.charts_dir, 'gasoline'))
         
-        # Plot top correlations
+        abs_corr_diesel.to_csv(os.path.join(diesel_dir, 'absolute_correlations.csv'))
+        pct_corr_diesel.to_csv(os.path.join(diesel_dir, 'pct_change_correlations.csv'))
+        
+        abs_corr_gasoline.to_csv(os.path.join(gasoline_dir, 'absolute_correlations.csv'))
+        pct_corr_gasoline.to_csv(os.path.join(gasoline_dir, 'pct_change_correlations.csv'))
+        
+        # Plot top correlations for diesel
         plt.figure(figsize=(14, 10))
         
         # Add category information to correlation data
@@ -226,7 +252,7 @@ class FuelDemandAnalyzer:
         plt.title('Top Negative Correlations with Diesel Demand')
         
         plt.tight_layout()
-        self.save_figure('diesel_correlations')
+        self.save_figure('correlations', subfolder='diesel')
         
         # Repeat for gasoline
         abs_corr_gasoline_df = abs_corr_gasoline.reset_index()
@@ -247,7 +273,7 @@ class FuelDemandAnalyzer:
         plt.title('Top Negative Correlations with Gasoline Demand')
         
         plt.tight_layout()
-        self.save_figure('gasoline_correlations')
+        self.save_figure('correlations', subfolder='gasoline')
         
         # Create correlation matrix heatmap
         # Select top 20 correlated features for each fuel type
@@ -268,7 +294,7 @@ class FuelDemandAnalyzer:
                     vmin=-1, vmax=1, center=0, linewidths=.5)
         plt.title('Correlation Matrix: Top Features vs Fuel Demand')
         plt.tight_layout()
-        self.save_figure('correlation_matrix')
+        self.save_figure('correlation_matrix')  # General chart - no subfolder
 
     def plot_variable_correlation_evolution(self, target='Diesel', window_size=12):
         """
@@ -282,7 +308,10 @@ class FuelDemandAnalyzer:
         if 'correlation_evolution' not in self.charts_to_generate:
             logger.info(f"Skipping correlation evolution plots for {target} based on configuration")
             return
-            
+        
+        # Determine subfolder based on target
+        subfolder = target.lower()
+        
         logger.info(f"Plotting correlation evolution for {target}...")
         
         # Create a figure with appropriate size based on number of variables
@@ -368,7 +397,7 @@ class FuelDemandAnalyzer:
         ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        self.save_figure(f'{target.lower()}_correlation_evolution')
+        self.save_figure('correlation_evolution', subfolder=subfolder)
         
         # Create a separate plot for each category if there are many variables
         if num_vars > 30 and 'correlation_by_category' in self.charts_to_generate:
@@ -399,7 +428,10 @@ class FuelDemandAnalyzer:
                 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
                 
                 plt.tight_layout()
-                self.save_figure(f'{target.lower()}_correlation_{category.lower().replace(" ", "_")}')
+                # Save in subfolder/category_name subfolder
+                category_dir = ensure_directory(os.path.join(self.charts_dir, subfolder, 'categories'))
+                self.save_figure(f'correlation_{category.lower().replace(" ", "_")}', 
+                               subfolder=os.path.join(subfolder, 'categories'))
                 
         # Create a summary table of correlations
         if 'correlation_table' in self.charts_to_generate:
@@ -415,7 +447,7 @@ class FuelDemandAnalyzer:
                     summary_df.loc[summary_df['Variable'] == var, 'Volatility'] = rc.std() / abs(corr_df.loc[corr_df['Variable'] == var, 'Correlation'].iloc[0])
             
             # Save to CSV
-            summary_df.to_csv(os.path.join(self.charts_dir, f'{target.lower()}_correlation_summary.csv'), index=False)
+            summary_df.to_csv(os.path.join(self.charts_dir, subfolder, 'correlation_summary.csv'), index=False)
         
     def perform_pca_analysis(self):
         """
@@ -426,6 +458,9 @@ class FuelDemandAnalyzer:
             return
             
         logger.info("Performing PCA analysis...")
+        
+        # PCA is a general analysis - save in a dedicated PCA subfolder
+        pca_dir = ensure_directory(os.path.join(self.charts_dir, 'pca'))
         
         # Fill missing values with median for PCA
         input_filled = self.input_absolute.fillna(self.input_absolute.median())
@@ -448,7 +483,7 @@ class FuelDemandAnalyzer:
         plt.axhline(y=0.8, color='r', linestyle='--')
         plt.axhline(y=0.9, color='g', linestyle='--')
         plt.title('PCA Explained Variance')
-        self.save_figure('pca_explained_variance')
+        self.save_figure('explained_variance', subfolder='pca')
         
         # Get feature loadings for top components
         n_components = 3  # Number of components to analyze
@@ -470,7 +505,7 @@ class FuelDemandAnalyzer:
             plt.title(f'Top Features in Principal Component {i+1}')
             plt.tight_layout()
         
-        self.save_figure('pca_feature_loadings')
+        self.save_figure('feature_loadings', subfolder='pca')
         
         # Plot first two components with category colors
         plt.figure(figsize=(12, 10))
@@ -490,7 +525,7 @@ class FuelDemandAnalyzer:
         plt.title('Feature Distribution in First Two Principal Components')
         plt.grid(True)
         plt.tight_layout()
-        self.save_figure('pca_feature_distribution')
+        self.save_figure('feature_distribution', subfolder='pca')
         
     def rolling_regression_analysis(self, window_size=60, target='Diesel'):
         """
@@ -501,6 +536,10 @@ class FuelDemandAnalyzer:
             target (str): Target variable ('Diesel' or 'Gasoline')
         """
         logger.info(f"Performing rolling regression analysis for {target} with window size {window_size}...")
+        
+        # Determine subfolder based on target
+        subfolder = os.path.join(target.lower(), 'regression')
+        ensure_directory(os.path.join(self.charts_dir, subfolder))
         
         # Prepare data
         X = self.input_absolute.copy()
@@ -556,7 +595,7 @@ class FuelDemandAnalyzer:
         plt.ylabel('R²')
         plt.grid(True)
         plt.tight_layout()
-        self.save_figure(f'{target.lower()}_rolling_r2')
+        self.save_figure('rolling_r2', subfolder=subfolder)
         
         # Analyze feature stability
         feature_counts = {}
@@ -577,7 +616,7 @@ class FuelDemandAnalyzer:
         plt.ylabel('Frequency in Top Features')
         plt.grid(True)
         plt.tight_layout()
-        self.save_figure(f'{target.lower()}_stable_features')
+        self.save_figure('stable_features', subfolder=subfolder)
         
         return dates, r2_scores, top_features
         
@@ -593,6 +632,9 @@ class FuelDemandAnalyzer:
             pd.DataFrame: DataFrame with cross-correlation results
         """
         logger.info(f"Performing cross-correlation analysis for {target} with max lag {max_lag}...")
+        
+        # Determine subfolder based on target
+        subfolder = target.lower()
         
         # Get target series
         target_series = self.demand_pct[target]
@@ -649,10 +691,10 @@ class FuelDemandAnalyzer:
         plt.title(f'Top Leading Indicators for {target} Demand')
         plt.xlabel('Maximum Cross-Correlation')
         plt.tight_layout()
-        self.save_figure(f'{target.lower()}_leading_indicators')
+        self.save_figure('leading_indicators', subfolder=subfolder)
         
         # Save results to CSV
-        results_df.to_csv(os.path.join(self.charts_dir, f'{target.lower()}_cross_correlations.csv'), index=False)
+        results_df.to_csv(os.path.join(self.charts_dir, subfolder, 'cross_correlations.csv'), index=False)
         
         return results_df
 
