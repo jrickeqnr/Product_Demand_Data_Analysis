@@ -127,8 +127,11 @@ def predict_with_linear_model(data, model_spec):
                 col_name = variable
                 
             if col_name in data.columns:
-                # Apply scaling and multiply by coefficient
-                contribution = data[col_name] / scaling * value
+                # Divide variable by scaling factor and multiply by coefficient
+                if scaling != 0:  # Avoid division by zero
+                    contribution = (data[col_name] / scaling) * value
+                else:
+                    contribution = data[col_name] * value  # If scaling is 0, don't scale
             else:
                 print(f"Warning: Variable {col_name} not found in data")
                 contribution = 0
