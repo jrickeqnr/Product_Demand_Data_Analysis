@@ -164,158 +164,164 @@ class FuelDemandForecaster:
         
         return X_train, X_test, y_train, y_test
         
-    def build_models(self, X, y, test_size=12, save_models=True, model_type='absolute'):
+    def build_models(self, X, y, test_size=12, save_models=True, model_type='absolute', n_splits=5):
         """
-        Build and evaluate multiple forecasting models
-        
-        Args:
-            X (pd.DataFrame): Feature data
-            y (pd.Series): Target data
-            test_size (int): Number of months to use for testing
-            save_models (bool): Whether to save trained models
-            model_type (str): Type of model ('absolute' or 'percent_change')
-            
-        Returns:
-            dict: Dictionary of model evaluation results
+        Build and evaluate multiple forecasting models with cross-validation and scaling
         """
-        # Create subdirectory for model type
         model_subdir = ensure_directory(os.path.join(self.model_dir, model_type))
         eval_subdir = ensure_directory(os.path.join(self.eval_dir, model_type))
         
-        # Split data
-        X_train, X_test, y_train, y_test = self.train_test_split(X, y, test_size)
+        tscv = TimeSeriesSplit(n_splits=n_splits)
         
-        logger.info(f"Training {model_type} models for {self.target_fuel} with {len(X_train)} samples, testing with {len(X_test)} samples")
+        logger.info(f"Training {model_type} models for {self.target_fuel} with {len(X)} samples using {n_splits}-fold cross-validation")
         
-        # Define models to evaluate
+        # Define models with Pipeline including StandardScaler
         models = {
-            'Linear Regression': LinearRegression(),
-            'ElasticNet': ElasticNet(random_state=42),
-            'Random Forest': RandomForestRegressor(random_state=42),
-            'Gradient Boosting': GradientBoostingRegressor(random_state=42),
-            'XGBoost': xgb.XGBRegressor(random_state=42)
+            'Linear Regression': Pipeline([
+                ('scaler', StandardScaler()),
+                ('model', LinearRegression())
+            ]),
+            'ElasticNet': Pipeline([
+                ('scaler', StandardScaler()),
+                ('model', ElasticNet(random_state=42, max_iter=10000, tol=0.001))
+            ]),
+            'Random Forest': Pipeline([
+                ('scaler', StandardScaler()),
+                ('model', RandomForestRegressor(random_state=42))
+            ]),
+            'Gradient Boosting': Pipeline([
+                ('scaler', StandardScaler()),
+                ('model', GradientBoostingRegressor(random_state=42))
+            ]),
+            'XGBoost': Pipeline([
+                ('scaler', StandardScaler()),
+                ('model', xgb.XGBRegressor(random_state=42))
+            ])
         }
         
-        # Train and evaluate models
         results = {}
         predictions = {}
         
-        # Create full timeseries starting from 2015-06-01
         full_dates = pd.date_range(start='2015-06-01', end=X.index[-1], freq='MS')
         timeseries_df = pd.DataFrame(index=full_dates)
         timeseries_df['date'] = full_dates
         
-        for name, model in models.items():
-            logger.info(f"Training {name} model...")
+        for name, pipeline in models.items():
+            logger.info(f"Training {name} model with rolling window and cross-validation...")
             
-            # Train model
-            model.fit(X_train, y_train)
+            fold_train_rmse = []
+            fold_test_rmse = []
+            fold_train_mae = []
+            fold_test_mae = []
+            fold_train_r2 = []
+            fold_test_r2 = []
             
-            # Make predictions on train and test sets
-            y_pred_train = model.predict(X_train)
-            y_pred_test = model.predict(X_test)
+            all_test_preds = pd.Series(index=X.index)
+            all_test_actual = pd.Series(index=X.index)
             
-            # Make predictions for full timeseries
-            full_pred = model.predict(X)
-            
-            # Calculate evaluation metrics
-            train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
-            test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
-            
-            train_mae = mean_absolute_error(y_train, y_pred_train)
-            test_mae = mean_absolute_error(y_test, y_pred_test)
-            
-            train_r2 = r2_score(y_train, y_pred_train)
-            test_r2 = r2_score(y_test, y_pred_test)
-            
-            # Store results
+            for train_idx, test_idx in tscv.split(X):
+                X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+                y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                
+                pipeline.fit(X_train, y_train)
+                
+                y_pred_train = pipeline.predict(X_train)
+                y_pred_test = pipeline.predict(X_test)
+                
+                fold_train_rmse.append(np.sqrt(mean_squared_error(y_train, y_pred_train)))
+                fold_test_rmse.append(np.sqrt(mean_squared_error(y_test, y_pred_test)))
+                fold_train_mae.append(mean_absolute_error(y_train, y_pred_train))
+                fold_test_mae.append(mean_absolute_error(y_test, y_pred_test))
+                fold_train_r2.append(r2_score(y_train, y_pred_train))
+                fold_test_r2.append(r2_score(y_test, y_pred_test))
+                
+                all_test_preds.iloc[test_idx] = y_pred_test
+                all_test_actual.iloc[test_idx] = y_test
+                
             results[name] = {
-                'train_rmse': train_rmse,
-                'test_rmse': test_rmse,
-                'train_mae': train_mae,
-                'test_mae': test_mae,
-                'train_r2': train_r2,
-                'test_r2': test_r2
+                'train_rmse_mean': np.mean(fold_train_rmse),
+                'train_rmse_std': np.std(fold_train_rmse),
+                'test_rmse_mean': np.mean(fold_test_rmse),
+                'test_rmse_std': np.std(fold_test_rmse),
+                'train_mae_mean': np.mean(fold_train_mae),
+                'test_mae_mean': np.mean(fold_test_mae),
+                'train_r2_mean': np.mean(fold_train_r2),
+                'test_r2_mean': np.mean(fold_test_r2)
             }
+            
+            final_X_train, final_X_test, final_y_train, final_y_test = self.train_test_split(X, y, test_size)
+            pipeline.fit(final_X_train, final_y_train)
+            final_y_pred_train = pipeline.predict(final_X_train)
+            final_y_pred_test = pipeline.predict(final_X_test)
             
             predictions[name] = {
-                'y_train': y_train,
-                'y_pred_train': y_pred_train,
-                'y_test': y_test,
-                'y_pred_test': y_pred_test
+                'y_train': final_y_train,
+                'y_pred_train': final_y_pred_train,
+                'y_test': final_y_test,
+                'y_pred_test': final_y_pred_test
             }
             
-            # Add predictions to timeseries dataframe
+            full_pred = pipeline.predict(X)
             pred_series = pd.Series(full_pred, index=X.index)
             aligned_pred = timeseries_df.index.map(
                 lambda x: pred_series[x] if x in pred_series.index else np.nan
             )
             timeseries_df[f"{self.target_fuel}_{name.replace(' ', '_')}"] = aligned_pred
             
-            # Save model if requested
             if save_models:
                 model_path = os.path.join(model_subdir, f"{name.replace(' ', '_').lower()}.pkl")
                 with open(model_path, 'wb') as f:
-                    pickle.dump(model, f)
+                    pickle.dump(pipeline, f)
                     
-            logger.info(f"{name} - Train RMSE: {train_rmse:.4f}, Test RMSE: {test_rmse:.4f}, Test R²: {test_r2:.4f}")
+            logger.info(f"{name} - Mean CV Test RMSE: {results[name]['test_rmse_mean']:.4f} (±{results[name]['test_rmse_std']:.4f})")
         
-        # Save timeseries predictions
-        # Only save from evaluation folder root (not model_type subfolder)
         base_eval_dir = ensure_directory('evaluation')
         output_file = os.path.join(base_eval_dir, f'{self.target_fuel.lower()}_predictions_{model_type}.csv')
         timeseries_df.to_csv(output_file, index=False)
-        logger.info(f"Saved {self.target_fuel} predictions to {output_file}")
         
-        # Plot results
         self.plot_model_comparisons(results, predictions, model_type)
-        
-        # Save feature importance for tree-based models
         for name in ['Random Forest', 'Gradient Boosting', 'XGBoost']:
             if name in models:
-                self.plot_feature_importance(models[name], X.columns, name, model_type)
-                
+                self.plot_feature_importance(models[name].named_steps['model'], X.columns, name, model_type)
+                        
         return results, predictions
         
     def plot_model_comparisons(self, results, predictions, model_type='absolute'):
         """
-        Plot comparison of model performance
-        
-        Args:
-            results (dict): Dictionary of model evaluation results
-            predictions (dict): Dictionary of model predictions
-            model_type (str): Type of model ('absolute' or 'percent_change')
+        Plot comparison of model performance with CV metrics - fixed metric names
         """
-        # Get subdirectory for evaluation outputs
         eval_subdir = os.path.join(self.eval_dir, model_type)
         
-        # Create DataFrame from results
         metrics_df = pd.DataFrame({
             model: {
-                'Train RMSE': results[model]['train_rmse'],
-                'Test RMSE': results[model]['test_rmse'],
-                'Train MAE': results[model]['train_mae'],
-                'Test MAE': results[model]['test_mae'],
-                'Train R²': results[model]['train_r2'],
-                'Test R²': results[model]['test_r2']
+                'Train RMSE (mean)': results[model]['train_rmse_mean'],
+                'Train RMSE (std)': results[model]['train_rmse_std'],
+                'Test RMSE (mean)': results[model]['test_rmse_mean'],
+                'Test RMSE (std)': results[model]['test_rmse_std'],
+                'Train MAE': results[model]['train_mae_mean'],
+                'Test MAE': results[model]['test_mae_mean'],
+                'Train R²': results[model]['train_r2_mean'],
+                'Test R²': results[model]['test_r2_mean']
             }
             for model in results.keys()
         }).T
         
-        # Save metrics to CSV
-        metrics_df.to_csv(os.path.join(eval_subdir, 'model_performance.csv'))
+        metrics_df.to_csv(os.path.join(eval_subdir, 'model_performance_cv.csv'))
         
-        # Plot RMSE comparison
         plt.figure(figsize=(12, 6))
-        metrics_df[['Train RMSE', 'Test RMSE']].plot(kind='bar')
+        plt.errorbar(metrics_df.index, metrics_df['Train RMSE (mean)'], 
+                    yerr=metrics_df['Train RMSE (std)'], label='Train RMSE', fmt='o')
+        plt.errorbar(metrics_df.index, metrics_df['Test RMSE (mean)'], 
+                    yerr=metrics_df['Test RMSE (std)'], label='Test RMSE', fmt='o')
         plt.title(f'{self.target_fuel} - Model RMSE Comparison ({model_type})')
         plt.ylabel('RMSE')
-        plt.grid(True, axis='y')
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.grid(True)
         plt.tight_layout()
-        plt.savefig(os.path.join(eval_subdir, 'rmse_comparison.png'))
+        plt.savefig(os.path.join(eval_subdir, 'rmse_comparison_cv.png'))
         plt.close()
         
-        # Plot R² comparison
         plt.figure(figsize=(12, 6))
         metrics_df[['Train R²', 'Test R²']].plot(kind='bar')
         plt.title(f'{self.target_fuel} - Model R² Comparison ({model_type})')
@@ -325,12 +331,9 @@ class FuelDemandForecaster:
         plt.savefig(os.path.join(eval_subdir, 'r2_comparison.png'))
         plt.close()
         
-        # Plot actual vs predicted for best model
         best_model = metrics_df['Test R²'].idxmax()
-        
         plt.figure(figsize=(15, 6))
         
-        # Training data
         plt.subplot(1, 2, 1)
         plt.scatter(predictions[best_model]['y_train'], predictions[best_model]['y_pred_train'])
         plt.plot([min(predictions[best_model]['y_train']), max(predictions[best_model]['y_train'])], 
@@ -341,7 +344,6 @@ class FuelDemandForecaster:
         plt.ylabel('Predicted')
         plt.grid(True)
         
-        # Test data
         plt.subplot(1, 2, 2)
         plt.scatter(predictions[best_model]['y_test'], predictions[best_model]['y_pred_test'])
         plt.plot([min(predictions[best_model]['y_test']), max(predictions[best_model]['y_test'])], 
@@ -356,7 +358,6 @@ class FuelDemandForecaster:
         plt.savefig(os.path.join(eval_subdir, 'best_model_predictions.png'))
         plt.close()
         
-        # Plot time series of actual vs predicted for test data
         plt.figure(figsize=(12, 6))
         plt.plot(predictions[best_model]['y_test'].index, predictions[best_model]['y_test'], 'b-', label='Actual')
         plt.plot(predictions[best_model]['y_test'].index, predictions[best_model]['y_pred_test'], 'r--', label='Predicted')
@@ -659,7 +660,7 @@ def main():
         
         # Prepare data for absolute values
         X_diesel, y_diesel = diesel_forecaster.prepare_data(
-            use_pct_change=False,  # Start with absolute values
+            use_pct_change=False,
             lag_features=True,
             max_lag=3,
             add_seasonality=True
@@ -670,11 +671,11 @@ def main():
             X_diesel, y_diesel, test_size=12, model_type='absolute'
         )
         
-        # Optimize the best performing model type
-        best_model_diesel = max(diesel_results.items(), key=lambda x: x[1]['test_r2'])[0]
+        # Optimize the best performing model type based on CV test R² mean
+        best_model_diesel = max(diesel_results.items(), key=lambda x: x[1]['test_r2_mean'])[0]
         
         if best_model_diesel == 'Linear Regression':
-            model_type = 'elasticnet'  # Use ElasticNet instead for hyperparameter tuning
+            model_type = 'elasticnet'
         elif best_model_diesel == 'Random Forest':
             model_type = 'randomforest'
         elif best_model_diesel == 'Gradient Boosting':
@@ -682,12 +683,12 @@ def main():
         elif best_model_diesel == 'XGBoost':
             model_type = 'xgboost'
         else:
-            model_type = 'elasticnet'  # Default
+            model_type = 'elasticnet'
             
         logger.info(f"Optimizing {model_type} model for Diesel demand...")
         diesel_forecaster.optimize_model(model_type, X_diesel, y_diesel, data_type='absolute')
         
-        # Try percent change model as well
+        # Try percent change model
         logger.info("Building percent change models for Diesel demand...")
         X_diesel_pct, y_diesel_pct = diesel_forecaster.prepare_data(
             use_pct_change=True,
@@ -708,7 +709,6 @@ def main():
         logger.info("Building models for Gasoline demand...")
         gasoline_forecaster = FuelDemandForecaster(target_fuel='Gasoline')
         
-        # Prepare data
         X_gasoline, y_gasoline = gasoline_forecaster.prepare_data(
             use_pct_change=False,
             lag_features=True,
@@ -716,13 +716,12 @@ def main():
             add_seasonality=True
         )
         
-        # Build and evaluate models
         gasoline_results, gasoline_predictions = gasoline_forecaster.build_models(
             X_gasoline, y_gasoline, test_size=12, model_type='absolute'
         )
         
-        # Optimize the best performing model type
-        best_model_gasoline = max(gasoline_results.items(), key=lambda x: x[1]['test_r2'])[0]
+        # Optimize the best performing model type based on CV test R² mean
+        best_model_gasoline = max(gasoline_results.items(), key=lambda x: x[1]['test_r2_mean'])[0]
         
         if best_model_gasoline == 'Linear Regression':
             model_type = 'elasticnet'
@@ -738,7 +737,6 @@ def main():
         logger.info(f"Optimizing {model_type} model for Gasoline demand...")
         gasoline_forecaster.optimize_model(model_type, X_gasoline, y_gasoline, data_type='absolute')
         
-        # Try percent change model as well
         logger.info("Building percent change models for Gasoline demand...")
         X_gasoline_pct, y_gasoline_pct = gasoline_forecaster.prepare_data(
             use_pct_change=True,
@@ -751,7 +749,6 @@ def main():
             X_gasoline_pct, y_gasoline_pct, test_size=12, model_type='percent_change'
         )
         
-        # Build ensemble model
         logger.info("Building ensemble model for Gasoline demand...")
         gasoline_forecaster.ensemble_prediction(X_gasoline, y_gasoline, data_type='absolute')
         
@@ -760,5 +757,5 @@ def main():
     except Exception as e:
         logger.error(f"Error in model building process: {str(e)}", exc_info=True)
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
