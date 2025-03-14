@@ -200,15 +200,23 @@ class FuelDemandForecaster:
         results = {}
         predictions = {}
         
+        # Create full timeseries starting from 2015-06-01
+        full_dates = pd.date_range(start='2015-06-01', end=X.index[-1], freq='MS')
+        timeseries_df = pd.DataFrame(index=full_dates)
+        timeseries_df['date'] = full_dates
+        
         for name, model in models.items():
             logger.info(f"Training {name} model...")
             
             # Train model
             model.fit(X_train, y_train)
             
-            # Make predictions
+            # Make predictions on train and test sets
             y_pred_train = model.predict(X_train)
             y_pred_test = model.predict(X_test)
+            
+            # Make predictions for full timeseries
+            full_pred = model.predict(X)
             
             # Calculate evaluation metrics
             train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
@@ -237,14 +245,27 @@ class FuelDemandForecaster:
                 'y_pred_test': y_pred_test
             }
             
+            # Add predictions to timeseries dataframe
+            pred_series = pd.Series(full_pred, index=X.index)
+            aligned_pred = timeseries_df.index.map(
+                lambda x: pred_series[x] if x in pred_series.index else np.nan
+            )
+            timeseries_df[f"{self.target_fuel}_{name.replace(' ', '_')}"] = aligned_pred
+            
             # Save model if requested
             if save_models:
-                # Save in the model type's subdirectory
                 model_path = os.path.join(model_subdir, f"{name.replace(' ', '_').lower()}.pkl")
                 with open(model_path, 'wb') as f:
                     pickle.dump(model, f)
                     
             logger.info(f"{name} - Train RMSE: {train_rmse:.4f}, Test RMSE: {test_rmse:.4f}, Test R²: {test_r2:.4f}")
+        
+        # Save timeseries predictions
+        # Only save from evaluation folder root (not model_type subfolder)
+        base_eval_dir = ensure_directory('evaluation')
+        output_file = os.path.join(base_eval_dir, f'{self.target_fuel.lower()}_predictions_{model_type}.csv')
+        timeseries_df.to_csv(output_file, index=False)
+        logger.info(f"Saved {self.target_fuel} predictions to {output_file}")
         
         # Plot results
         self.plot_model_comparisons(results, predictions, model_type)
